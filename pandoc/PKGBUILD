@@ -1,0 +1,73 @@
+# $Id$
+# Maintainer: Markus Wamser
+# Contributor: Felix Yan <felixonmars@archlinux.org>
+# Contributor: Arch Haskell Team <arch-haskell@haskell.org>
+
+# This is PKGBUILD to make a fully cabalised build of pandoc while only
+# depending on Tom Hall's ghc and ghc-llvm packages.
+
+
+pkgname=pandoc
+pkgver=1.15.2.1
+pkgrel=12
+pkgdesc="Conversion between markup formats"
+url="http://pandoc.org"
+license=("GPL")
+arch=('armv7h')
+depends=()
+builddepends=('ghc-llvm' 'ghc>=7.10.2-2' 'cabal-install')
+optdepends=()
+options=('staticlibs')
+source=("http://hackage.haskell.org/packages/archive/${pkgname}/${pkgver}/${pkgname}-${pkgver}.tar.gz")
+install="${pkgname}.install"
+sha256sums=('60bcb0e65ecb63953dd26d5aacf1a5df83700d116062ffaeffe9edbc9be6df59')
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    
+    # compile in sandbox to prevent cluttering of system with libraries
+    cabal sandbox init
+    
+    # install and build all the deps from hackage, but only in sandbox
+    # this is easier than having long lists here and future-proof
+    # at the cost of probably some additional work
+    cabal --require-sandbox install --dependencies-only -j2 pandoc
+    
+    # no profiling, no shared libs, optimisation level -O2
+    #cabal configure -O --enable-library-profiling --enable-shared \
+    cabal configure -O2 --prefix=/usr --docdir="/usr/share/doc/${pkgname}" \
+        --libsubdir=\$compiler/site-local/\$pkgid \
+            -f-old-locale -fnetwork-uri -fhttps -f-trypandoc -f-embed_data_files
+    # build single threaded to reduce RAM pressure        
+    cabal build -j1
+
+    # LC_CTYPE=en_US.UTF-8 is needed since 1.15.1
+    # https://github.com/jgm/pandoc/issues/2457#issuecomment-149146107
+    LC_CTYPE=en_US.UTF-8 cabal haddock --hoogle --html
+
+    runhaskell Setup register --gen-script
+    runhaskell Setup unregister --gen-script
+    sed -i -r -e "s|ghc-pkg.*unregister[^ ]* |&'--force' |" unregister.sh
+    
+    #remove paths left over because of cabalized build
+    sed -i -r -e "s|^export.*$||" register.sh
+    sed -i -r -e "s|'--no-user-package-db[^ ]* ||" register.sh
+    sed -i -r -e "s|'--package-db[^ ]* ||" register.sh
+    sed -i -r -e "s|^export.*$||" unregister.sh
+    sed -i -r -e "s|'--package-db[^ ]* ||" unregister.sh
+    
+}
+
+package() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    
+    install -D -m744 register.sh   "${pkgdir}/usr/share/haskell/${pkgname}/register.sh"
+    install    -m744 unregister.sh "${pkgdir}/usr/share/haskell/${pkgname}/unregister.sh"
+    install -d -m755 "${pkgdir}/usr/share/man/man1"
+    install -d -m755 "${pkgdir}/usr/share/man/man5"
+    install -d -m755 "${pkgdir}/usr/share/doc/ghc/html/libraries"
+    ln -s "/usr/share/doc/${pkgname}/html" "${pkgdir}/usr/share/doc/ghc/html/libraries/${pkgname}"
+    runhaskell Setup copy --destdir="${pkgdir}"
+    install -D -m644 "COPYING" "${pkgdir}/usr/share/licenses/${pkgname}/COPYING"
+    rm -f "${pkgdir}/usr/share/doc/${pkgname}/COPYING"
+}
