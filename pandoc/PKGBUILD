@@ -3,7 +3,7 @@
 # Contributor: Felix Yan <felixonmars@archlinux.org>
 # Contributor: Arch Haskell Team <arch-haskell@haskell.org>
 
-# This is PKGBUILD to make a fully cabalised build of pandoc while only
+# This is a PKGBUILD to make a fully cabalised build of pandoc while only
 # depending on Tom Hall's ghc and ghc-llvm packages.
 
 
