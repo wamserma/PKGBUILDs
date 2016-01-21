@@ -1,0 +1,93 @@
+# $Id$
+# Maintainer: Tom Hall <tahall256@gmail.com>
+# Contributor: Evangelos Foutras <evangelos@foutrelis.com>
+# Contributor: Jan "heftig" Steffens <jan.steffens@gmail.com>
+# Contributor: Sebastian Nowicki <sebnow@gmail.com>
+# Contributor: Devin Cofer <ranguvar{AT]archlinux[DOT}us>
+# Contributor: Tobias Kieslich <tobias@justdreams.de>
+# Contributor: Geoffroy Carrier <geoffroy.carrier@aur.archlinux.org>
+# Contributor: Tomas Lindquist Olsen <tomas@famolsen.dk>
+# Contributor: Roberto Alsina <ralsina@kde.org>
+# Contributor: Gerardo Exequiel Pozzi <vmlinuz386@yahoo.com.ar>
+
+# This package is meant to provide a minimal llvm install of a different version 
+# for GHC to use
+
+pkgname=('ghc-llvm')
+pkgdesc="Blessed version of LLVM opt and llc for GHC"
+pkgver=3.5.2
+pkgrel=2
+arch=('armv7h')
+url="http://llvm.org/"
+license=('custom:University of Illinois/NCSA Open Source License')
+makedepends=('libffi' 'python2')
+options=('staticlibs')
+source=(http://llvm.org/releases/$pkgver/llvm-$pkgver.src.tar.xz{,.sig}
+        http://llvm.org/releases/$pkgver/cfe-$pkgver.src.tar.xz{,.sig}
+        llvm-3.5.0-force-link-pass.o.patch
+        gcc5.patch
+        llvm-Config-config.h
+        llvm-Config-llvm-config.h)
+sha256sums=('44196156d5749eb4b4224fe471a29cc3984df92570a4a89fa859f7394fc0c575'
+            'SKIP'
+            '4feb575f74fb3a74b6245400460230141bf610f235ef3a25008cfe6137828620'
+            'SKIP'
+            '5702053503d49448598eda1b8dc8c263f0df9ad7486833273e3987b5dec25a19'
+            'c964eecdfb0cbf4d2a59a553d7bdb3f16e70d8910e6aa7e9c768828ecbdfcea2'
+            '312574e655f9a87784ca416949c505c452b819fad3061f2cde8aced6540a19a3'
+            '597dc5968c695bbdbb0eac9e8eb5117fcd2773bc91edf5ec103ecffffab8bc48')
+validpgpkeys=('11E521D646982372EB577A1F8F0871F202119294')
+
+prepare() {
+  cd "$srcdir/llvm-$pkgver.src"
+
+  # At the present, clang must reside inside the LLVM source code tree to build
+  # See http://llvm.org/bugs/show_bug.cgi?id=4840
+  mv "$srcdir/cfe-$pkgver.src" tools/clang
+
+  # Fix docs installation directory
+  sed -i 's:$(PROJ_prefix)/docs/llvm:$(PROJ_prefix)/share/doc/llvm:' \
+    Makefile.config.in
+
+  # Fix definition of LLVM_CMAKE_DIR in LLVMConfig.cmake
+  sed -i '/@LLVM_CONFIG_CMAKE_DIR@/s:$(PROJ_cmake):$(PROJ_prefix)/share/llvm/cmake:' \
+    cmake/modules/Makefile
+
+  # Fix build with GCC 4.9 (patch from Debian)
+  # http://llvm.org/bugs/show_bug.cgi?id=20067
+  patch -Np1 -i ../llvm-3.5.0-force-link-pass.o.patch
+
+  # Fix build with GCC 5.1
+  # http://llvm.org/viewvc/llvm-project?view=revision&revision=218295
+  patch -Np0 -i ../gcc5.patch
+}
+
+build() {
+  cd "$srcdir/llvm-$pkgver.src"
+
+  # Include location of libffi headers in CPPFLAGS
+  CPPFLAGS+=" $(pkg-config --cflags libffi)"
+
+  # Force the use of GCC instead of clang
+  CC=gcc CXX=g++ \
+  ./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-shared \
+    --enable-optimized \
+    --enable-libffi \
+    --enable-targets=all \
+    --disable-assertions \
+    --with-binutils-include=/usr/include \
+    --with-python=/usr/bin/python2
+
+  make REQUIRES_RTTI=1
+}
+
+package() {
+  mkdir -p "$pkgdir/usr/bin"
+  mkdir -p "$pkgdir/usr/lib"
+  cp "$srcdir/llvm-$pkgver.src/Release/bin/opt" "$pkgdir/usr/bin/ghc-opt"
+  cp "$srcdir/llvm-$pkgver.src/Release/bin/llc" "$pkgdir/usr/bin/ghc-llc"
+  cp -d "$srcdir"/llvm-$pkgver.src/Release/lib/libLLVM*.so "$pkgdir/usr/lib/"
+}
